@@ -1,0 +1,233 @@
+// A code for a pedestrian priority traffic light crossing made with the use of an Arduino.
+// Giving names to the pins (makes it easier to refer to). 
+
+int trigPin = 6;
+int echoPin = 7;
+int yellow = 3;
+int green = 4;   
+int yellow2 = 9;
+int red = 2;
+int red2 = 10;
+int green2 = 8;
+int buzzer = 12;
+
+//Defining functions we're using in this code
+void readSensor();
+void handlePedestrian();
+void handleTrafficLight();
+
+// Next, we need to define all the variables we're using in this code. This is VERY important for a smooth transition.
+// I'll be using milliseconds to time things (delays should not be used because they pause the whole program, whereas millis are non blocking.)
+//I created variables for the different things going on in my code.
+//Unsigned variables were used because all these values are t_ime ,so it should not have negative values and needs a odd positive range.
+
+unsigned long currentMillis; // Current time in milliseconds
+unsigned long previousMillisSensor = 0; //Last time the sensor ran in milliseconds
+unsigned long previousMillisTraffic = 0;// Last time traffic signal was changed in milliseconds
+unsigned long previousMillisPedestrian = 0; //Last time a pedestrian was detected in milliseconds
+
+//Now, we use constant unsigned variables (same thing as unsigned variables except once decided, their value can't be changed.) We use these to make the sensor perform the detection in a
+//specific amount of t_ime, without pausing the whole code with delays again.
+
+const unsigned long sensorInterval = 50;   // Sensor reads every 50 milliseconds. An interval in milliseconds is good as it detects smoothly with an unnoticable pause.
+const unsigned long pedestrianInterval = 3000; // Amount of time my code will go on for if it detects a pedestrian (3 seconds).
+
+// We have to do assign timing for our LEDs too otherwise the LEDs won't run in the time that we want them to, since we are not using delays directly.
+
+const unsigned long allredDelay = 3000;    // 3 seconds delay when all signals red
+const unsigned long NS_greenEW_redDelay = 5000; // 5 seconds delay when East West is red and North South is green
+const unsigned long NS_yellowEW_redDelay = 1000; // 1 second delay when East West is red and North South is yellow
+const unsigned long EW_greenNS_redDelay = 5000; //  5 seconds delay when East West is green and North South is red
+const unsigned long EW_yellowNS_redDelay = 1000; // 1 second delay when East West is yellow and North South is red
+
+//Setting up more variables
+
+long duration; //time it takes for sensor to detect
+float distance; // distance for serial printing (float type of variable used so that the distance is printed in decimals and thus more accurate.)
+int trafficState = 0; // we'll be using different states for each of the conditions for the traffic lights, this tells us which condition it is on at the moment
+bool pedestrianDetected = false; //bool is a binary function that only gives values of true of false. My variable is a pedestrian being detected ("pedestrianDetected"). So, when pedestrian
+//is within 5 cms of sensor our value is true otherwise it's false.
+
+void setup() {
+  Serial.begin(9600); // VERY important for debugging the code, ultrasonic sensors don't work well without this.
+  pinMode(trigPin, OUTPUT); //defining input and output for all these
+  pinMode(echoPin, INPUT); //sensor reads the echo so input
+  pinMode(red, OUTPUT); //LED is lit up so output
+  pinMode(red2, OUTPUT); //LED is lit up so output
+  pinMode(yellow, OUTPUT); //LED is lit up so output
+  pinMode(green, OUTPUT); //LED is lit up so output
+  pinMode(yellow2, OUTPUT); //LED is lit up so output
+  pinMode(green2, OUTPUT); //LED is lit up so output
+  pinMode(buzzer, OUTPUT); //Buzzer makes a sound so output
+}
+
+void loop() {
+  // Our loop is important because this when we our getting our code to determine what it is suppossed to execute like is it suppossed to run the traffic light or run the code for pedestrian
+//  detection. Without this format, our functions are useless and don't connect.
+  
+  currentMillis = millis(); // Start by figuring out the current time in milliseconds
+
+  // Sensor reading: Before we defined different variables, all we're doing is using them with simple math. After the sensor tells us the current time ,which it constantly does, we 
+//  sutract the previous t_ime from the current one which should be greater than or equal to our sensor interval (50 milliseconds like I described above). If the condition is met (so t_ime
+//  passed is greater than or equal to 50 milliseconds then we allow the sensor to start reading again.
+  
+  if (currentMillis - previousMillisSensor >= sensorInterval){ //math 
+    previousMillisSensor = currentMillis;//updates current time
+    readSensor(); //makes the sensor start reading again
+  }
+
+  // Handle pedestrian detection
+  if (pedestrianDetected) { // checks if sensor detects something
+    if (currentMillis - previousMillisPedestrian >= pedestrianInterval) { 
+      pedestrianDetected = false; // 3000 seconds pause if pedestrian is dected otherwise it resets to start reading again while allowing the traffic signal cycle to start working
+    } else {
+      handlePedestrian(); // Runs the code I will tell it to during the pause
+      return; // Exit loop to keep running the code in case of pedestrians at any time during the code. It is very important for this because the if condition needs to keep running to 
+     // ensure our sesnor is working throughout and not stopping for the Traffic light cycle later in this code.
+    }
+  }
+
+  // Traffic light cycle 
+  handleTrafficLight(); // makes sure the traffic light cycle stays looped
+}
+
+//Now, this is the MOST important step. We're breaking down the code into smaller parts so that it's easier to work with and for our Arduino to read. Void is just defined as something
+//that does not return any value, any function can be used with it including the ones we create (geeksforgeeks.org). So, revisiting the basic logic of my code all I need is 3 functions
+//because there is only 3 things I want my code to output. I could want it to r_un the sensor, r_un the code for when a pedestrian is detected or r_un the traffic lights as usual.
+
+//First, I'll write my code for reading the sensor:
+
+void readSensor() {
+  // Basic Ultrasonic sensor logic
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  duration = pulseIn(echoPin, HIGH);
+  distance = (duration / 2.0) / 29.1; // Convert to cm
+
+  // Keep on printing the distance on serial monitor
+  if (distance >= 200 || distance <= 0) {
+    Serial.println("Out of range");
+    pedestrianDetected = false; // If I don't reset this code it can result in my handlePedesttrian code starting to work when sesnor is out of range too.
+  } else {
+    Serial.print("Distance: ");
+    Serial.print(distance);
+    Serial.println(" cm");
+  }
+
+  // Pedestrian detection logic
+  if (distance < 5) { //If distance is lesser than 5 centimetres
+    pedestrianDetected = true; //A pedestrian is detected
+    previousMillisPedestrian = currentMillis; // Reading current time so that it knows to execute the code for 3 seconds
+  }
+}
+
+// Second I'll write the Pedestrian detection code to go with my sensor one:
+
+void handlePedestrian() {
+  // Flash yellow light and stop traffic while making a sound to alert pedestrians and drivers!
+  digitalWrite(yellow, HIGH);
+  digitalWrite(yellow2, HIGH);
+  delay (1000); // Flash of yellow led
+  digitalWrite(yellow, LOW);
+  digitalWrite(yellow2, LOW);
+  digitalWrite(red, HIGH); //red led turns on
+  digitalWrite(red2, HIGH);
+  tone(buzzer, 1000);
+  delay(500); // Short buzz
+  noTone(buzzer);
+}
+
+//Lastly, I'll write my traffic cycle code to run throughout:
+
+void handleTrafficLight() {
+  static unsigned long stateStartTime = 0; // Static makes sure that even if the function is called on multiple times the value doesn't reset every time (geeksforgeeks.org).In this case
+                                           //we're making sure that that the time this function is suppossed to start doesn't change. Thus, it is defined to 0.
+                                           
+  static int localState = 0; //Makes sure to always check the state the LEDs are currently at.
+
+  if (currentMillis - stateStartTime >= getDelayForState(localState)) { //Simple math to check how much time has passed during the state
+    stateStartTime = currentMillis; // If time for one state is finished, it updates the current time 
+    localState = (localState + 1) % 6; // In C/C++ programming languages, mod refers to the mathematical operation in which one number is divided by another, and the remainder is returned.
+//It can be performed using modulo operator (%) (geeksforgeeks.org). So, the reason I am using this is because my code requires math. There are 6 states I could possibly want my LEDs in
+//localState gives us the current state it is in, the highest state is 5. (5 + 1)= 6 and 6 % gives us remainder 0. All this does is that it will loop the code repeating it. Because,0 is our
+//starting state.
+
+  }
+
+  // Update traffic light states based on localState
+  switch (localState) { //In C++, the switch statement is a flow control statement that is used to execute the different blocks of statements based on the value of the given expression
+    // (geeksforgeeks.org). All I'm doing is using a simple switch statement instead of the whole if else condition.
+
+    //Used en.cppreference.com for learning about cases.
+    //Used geeksforgeeks.org for format of cases.
+    case 0: // All signals RED
+      digitalWrite(red, HIGH);
+      digitalWrite(red2, HIGH);
+      digitalWrite(yellow, LOW);
+      digitalWrite(yellow2, LOW);
+      digitalWrite(green, LOW);
+      digitalWrite(green2, LOW);
+      break; // Used instead of delays
+
+    case 1: // North-South green, East-West red
+      digitalWrite(green, HIGH);
+      digitalWrite(green2, LOW);
+      digitalWrite(yellow, LOW);
+      digitalWrite(yellow2, LOW);
+      digitalWrite(red, LOW);
+      digitalWrite(red2, HIGH);
+      break;
+
+    case 2: // North-South yellow, East-West red
+      digitalWrite(yellow, HIGH);
+      digitalWrite(yellow2, LOW);
+      digitalWrite(green, LOW);
+      digitalWrite(red, LOW);
+      digitalWrite (red2,HIGH);
+      break;
+
+    case 3: // All signals RED
+      digitalWrite(red, HIGH);
+      digitalWrite(red2, HIGH);
+      digitalWrite(yellow, LOW);
+      digitalWrite(yellow2, LOW);
+      digitalWrite(green, LOW);
+      digitalWrite(green2, LOW);
+      break;
+
+    case 4: // East-West green, North-South red
+      digitalWrite(green2, HIGH);
+      digitalWrite(green, LOW);
+      digitalWrite(yellow, LOW);
+      digitalWrite(yellow2, LOW);
+      digitalWrite(red, HIGH);
+      digitalWrite(red2, LOW);
+      break;
+
+    case 5: // East-West yellow, North-South red
+      digitalWrite(yellow2, HIGH);
+      digitalWrite(yellow, LOW);
+      digitalWrite(green2, LOW);
+      digitalWrite(red, HIGH);
+      digitalWrite(red2, LOW);
+      break;
+  }
+}
+
+unsigned long getDelayForState(int state) { //using getDelay to make sure time is followed for the cases
+  
+  switch (state) { // Changing state while using the variables I defined at the start of code for timing
+    case 0: return allredDelay;    // All signals red
+    case 1: return NS_greenEW_redDelay;  // North-South green
+    case 2: return NS_yellowEW_redDelay; // North-South yellow
+    case 3: return allredDelay;    // All signals red again
+    case 4: return EW_greenNS_redDelay;  // East-West green
+    case 5: return EW_yellowNS_redDelay; // East-West yellow
+    default: return allredDelay;   // All red is our default, if the state isn't any it just goes back to all red
+  }
+}
+
